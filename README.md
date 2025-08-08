@@ -1,3 +1,18 @@
+## Data Generation
+
+For World Models, one can use data_gen.py to create .npz files of episode with currently available agents [random, heuristic, PPO]
+
+This data is formatted as follows:
+  - Observations (RGB Images)
+  - Actions (Integers)
+  - Rewards (Floats)
+  - Dones (Booleans)
+
+The saved data can be vizualized with data_viz.py for double checking if everything works as intended.
+The following is an example:
+
+![Visualized Data Example](https://raw.githubusercontent.com/kristi700/crafter_data_gen/main/media/generated_data.gif)
+
 **Status:** Stable release
 
 [![PyPI](https://img.shields.io/pypi/v/crafter.svg)](https://pypi.python.org/pypi/crafter/#history)

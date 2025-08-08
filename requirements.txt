@@ -1,0 +1,5 @@
+opensimplex
+stable-baselines3
+numpy
+gym
+shimmy
