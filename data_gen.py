@@ -1,9 +1,11 @@
-import argparse
 import os
+import uuid
 import random
+import argparse
+import numpy as np
+
 from typing import Any, Tuple
 
-import numpy as np
 import crafter
 
 
@@ -178,6 +180,11 @@ def collect_episode(env, agent, max_steps: int) -> dict:
         "dones": np.asarray(done_buf, dtype=bool),
     }
 
+def save_npy(path, observations, episode_num):
+    os.makedirs(path, exist_ok=True)
+    for observation in observations:
+        ep_id = str(uuid.uuid4())
+        np.save(os.path.join(path, f"{ep_id}.npy"), observation.astype(np.uint8))
 
 def main():
     parser = argparse.ArgumentParser(
@@ -279,14 +286,15 @@ def main():
         data = collect_episode(base_env, agent, args.max_steps)
 
         fname = f"episode_{ep:04d}.npz"
-        fpath = os.path.join(args.outdir, args.agent, fname)
+        root_path = os.path.join(args.outdir, args.agent)
         np.savez_compressed(
-            fpath,
+            os.path.join(root_path, fname),
             observations=data["observations"],
             actions=data["actions"],
             rewards=data["rewards"],
             dones=data["dones"],
         )
+        save_npy(os.path.join(root_path, "all_observations"), data["observations"], ep)
         print(
             f"[{ep+1}/{args.num_episodes}] saved {len(data['actions'])} steps -> {fname}"
         )
