@@ -1,5 +1,5 @@
 import os
-import uuid
+import json
 import random
 import argparse
 import numpy as np
@@ -74,6 +74,45 @@ class HeuristicAgent:
         a = np.random.choice(self.n, p=p)
         return [int(a)], None
 
+
+class FrameShardWriter:
+    def __init__(self, out_dir, shard_size=100_000, prefix="frames_shard"):
+        self.out = os.path.abspath(out_dir)
+        os.makedirs(self.out, exist_ok=True)
+
+        self.shard_size = shard_size
+        self.prefix = prefix
+        self.buf = []
+        self.total = 0
+        self.shard_id = 0
+        self.index = []
+
+    def _flush_one(self, frames):
+        arr = np.stack(frames, axis=0).astype(np.uint8)
+        filename = f"{self.prefix}_{self.shard_id:05d}.npy"
+        path = os.path.join(self.out, filename)
+
+        np.save(path, arr)
+
+        self.index.append({"path": os.path.basename(path), "length": len(arr)})
+        self.total += len(arr)
+        self.shard_id += 1
+
+    def add_episode(self, observations: np.ndarray):
+        for f in observations:
+            self.buf.append(f)
+            while len(self.buf) >= self.shard_size:
+                self._flush_one(self.buf[:self.shard_size])
+                self.buf = self.buf[self.shard_size:]
+
+    def close(self):
+        if self.buf:
+            self._flush_one(self.buf)
+            self.buf.clear()
+
+        index_path = os.path.join(self.out, "index.json")
+        with open(index_path, "w") as f:
+            json.dump({"total": self.total, "shards": self.index}, f, indent=2)
 
 def make_agent(
     kind: str, env, model_path: str, ppo_train_steps: int, ppo_n_envs: int, seed: int
@@ -180,11 +219,6 @@ def collect_episode(env, agent, max_steps: int) -> dict:
         "dones": np.asarray(done_buf, dtype=bool),
     }
 
-def save_npy(path, observations, episode_num):
-    os.makedirs(path, exist_ok=True)
-    for observation in observations:
-        ep_id = str(uuid.uuid4())
-        np.save(os.path.join(path, f"{ep_id}.npy"), observation.astype(np.uint8))
 
 def main():
     parser = argparse.ArgumentParser(
@@ -274,7 +308,9 @@ def main():
     print(
         f"Collecting {args.num_episodes} episodes to {args.outdir} (max_steps={args.max_steps})"
     )
-
+    root_path = os.path.join(args.outdir, args.agent)
+    frames_dir = os.path.join(root_path, "frames_shards")
+    sharder = FrameShardWriter(frames_dir, shard_size=100_000)
     for ep in range(args.num_episodes):
 
         ep_seed = args.seed + ep
@@ -286,7 +322,6 @@ def main():
         data = collect_episode(base_env, agent, args.max_steps)
 
         fname = f"episode_{ep:04d}.npz"
-        root_path = os.path.join(args.outdir, args.agent)
         np.savez_compressed(
             os.path.join(root_path, fname),
             observations=data["observations"],
@@ -294,12 +329,12 @@ def main():
             rewards=data["rewards"],
             dones=data["dones"],
         )
-        save_npy(os.path.join(root_path, "all_observations"), data["observations"], ep)
+        sharder.add_episode(data["observations"])
         print(
             f"[{ep+1}/{args.num_episodes}] saved {len(data['actions'])} steps -> {fname}"
         )
+    sharder.close()
 
-    print("Done.")
 
 
 if __name__ == "__main__":
